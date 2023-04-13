@@ -60,7 +60,7 @@ public static void main(String[] args) throws Exception {
 
 ### Downloading a playlist
 
-The `getVideos()` method will return an ArrayList with the links extracted from the playlist url (YouTube mix not supported)
+The `getVideos()` method will return an List with the links extracted from the playlist url (YouTube mix not supported)
 
 ```java
  public static void main(String[] args) throws Exception {
@@ -72,7 +72,7 @@ The `getVideos()` method will return an ArrayList with the links extracted from 
 
 ### Using the search feature
 
-The `results()` method will return an ArrayList with Youtube objects that can be inspected and downloaded.
+The `results()` method will return an List with Youtube objects that can be inspected and downloaded.
 
 ```java
 public static void main(String[] args) throws Exception {
@@ -84,13 +84,13 @@ public static void main(String[] args) throws Exception {
 
 ### Interacting with channels
 
-* `getVideos()`: method returns an ArrayList containing the channel's videos.
+* `getVideos()`: method returns an List containing the channel's videos.
 
 
-* `getShorts()`: method returns an ArrayList containing the channel's YouTube Shorts.
+* `getShorts()`: method returns an List containing the channel's YouTube Shorts.
 
 
-* `getLives()`: method returns an ArrayList containing the channel's lives.
+* `getLives()`: method returns an List containing the channel's lives.
 
 ```java
 public static void main(String[] args) throws Exception {

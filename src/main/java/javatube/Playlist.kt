@@ -1,234 +1,225 @@
-package javatube;
+package javatube
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
+import java.util.regex.Pattern
 
-import java.util.ArrayList;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+open class Playlist(private val url: String) {
+    protected var html: String? = null
+    protected var json: JSONObject? = null
 
-public class Playlist {
-    private final String url;
-    protected String html = null;
-    protected JSONObject json = null;
-    public Playlist(String InputUrl){
-        url = InputUrl;
-    }
-
-    private String getPlaylistId() throws Exception {
-        Pattern pattern = Pattern.compile("list=[a-zA-Z0-9_\\-]*");
-        Matcher matcher = pattern.matcher(url);
-        if (matcher.find()){
-            return matcher.group(0);
-        }else {
-            throw new Exception("RegexMatcherError: " + pattern);
-        }
-    }
-
-    protected String baseData(String continuation){
-        return "{\"continuation\": \"" + continuation + "\", \"context\": {\"client\": {\"clientName\": \"WEB\", \"clientVersion\": \"2.20200720.00.02\"}}}";
-    }
-
-    private String baseParam(){
-        return "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
-    }
-
-    private String getPlaylistUrl() throws Exception {
-        return "https://www.youtube.com/playlist?" + getPlaylistId();
-    }
-
-    protected String setHtml() throws Exception {
-        return InnerTube.downloadWebPage(getPlaylistUrl());
-    }
-    protected String getHtml() throws Exception {
-        if(html == null){
-            html = setHtml();
-        }
-        return html;
-    }
-
-    protected JSONObject setJson() throws Exception {
-        Pattern pattern = Pattern.compile("ytInitialData\\s=\\s(\\{\\\"responseContext\\\":.*\\});</script>");
-        Matcher matcher = pattern.matcher(getHtml());
-        if(matcher.find()){
-            return new JSONObject(matcher.group(1));
-        }else {
-            throw new Exception("RegexMatcherError: " + pattern);
-        }
-    }
-
-    protected JSONObject getJson() throws Exception {
-        if(json == null){
-            json = setJson();
-        }
-        return json;
-    }
-
-    protected JSONArray buildContinuationUrl(String continuation) throws Exception {
-        return extractVideos(new JSONObject(InnerTube.post(baseParam(), baseData(continuation))));
-    }
-
-    protected JSONArray extractVideos(JSONObject rawJson) {
-        JSONArray swap = new JSONArray();
-        try {
-            JSONArray importantContent;
-            try {
-                JSONObject tabs = rawJson.getJSONObject("contents")
-                        .getJSONObject("twoColumnBrowseResultsRenderer")
-                        .getJSONArray("tabs")
-                        .getJSONObject(0)
-                        .getJSONObject("tabRenderer")
-                        .getJSONObject("content")
-                        .getJSONObject("sectionListRenderer")
-                        .getJSONArray("contents")
-                        .getJSONObject(0);
-
-                importantContent = tabs.getJSONObject("itemSectionRenderer")
-                        .getJSONArray("contents")
-                        .getJSONObject(0)
-                        .getJSONObject("playlistVideoListRenderer")
-                        .getJSONArray("contents");
-
-            }catch (JSONException e){
-                importantContent = rawJson.getJSONArray("onResponseReceivedActions")
-                        .getJSONObject(0)
-                        .getJSONObject("appendContinuationItemsAction")
-                        .getJSONArray("continuationItems");
+    private val playlistId: String
+        get() {
+            val pattern = Pattern.compile("list=[a-zA-Z0-9_\\-]*")
+            val matcher = pattern.matcher(url)
+            return if (matcher.find()) {
+                matcher.group(0)
+            } else {
+                throw Exception("RegexMatcherError: $pattern")
             }
-            try{
-                String continuation = importantContent.getJSONObject(importantContent.length() - 1)
-                        .getJSONObject("continuationItemRenderer")
-                        .getJSONObject("continuationEndpoint")
-                        .getJSONObject("continuationCommand")
-                        .getString("token");
+        }
 
-                JSONArray continuationEnd = buildContinuationUrl(continuation);
+    protected open fun baseData(continuation: String): String {
+        return "{\"continuation\": \"$continuation\", \"context\": {\"client\": {\"clientName\": \"WEB\", \"clientVersion\": \"2.20200720.00.02\"}}}"
+    }
 
-                for(int i = 0; i < importantContent.length(); i++){
-                    swap.put(importantContent.get(i));
+    private fun baseParam(): String {
+        return "https://www.youtube.com/youtubei/v1/browse?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+    }
+
+    private val playlistUrl: String
+        private get() = "https://www.youtube.com/playlist?" + playlistId
+
+    @Throws(Exception::class)
+    protected open fun setHtml(): String? {
+        return InnerTube.downloadWebPage(playlistUrl)
+    }
+
+    @Throws(Exception::class)
+    protected fun getHtmlAsString(): String {
+        if (html == null) {
+            html = setHtml()
+        }
+        return html!!
+    }
+
+    @Throws(Exception::class)
+    protected fun setJson(): JSONObject {
+        val pattern =
+            Pattern.compile("ytInitialData\\s=\\s(\\{\\\"responseContext\\\":.*\\});</script>")
+        val matcher = pattern.matcher(getHtmlAsString())
+        return if (matcher.find()) {
+            JSONObject(matcher.group(1))
+        } else {
+            throw Exception("RegexMatcherError: $pattern")
+        }
+    }
+
+    @Throws(Exception::class)
+    protected fun getJsonObj(): JSONObject {
+        if (json == null) {
+            json = setJson()
+        }
+        return json!!
+    }
+
+    @Throws(Exception::class)
+    protected fun buildContinuationUrl(continuation: String): JSONArray {
+        return extractVideos(JSONObject(InnerTube.post(baseParam(), baseData(continuation))))
+    }
+
+    protected open fun extractVideos(rawJson: JSONObject): JSONArray {
+        val swap = JSONArray()
+        try {
+            val importantContent: JSONArray = try {
+                val tabs = rawJson.getJSONObject("contents")
+                    .getJSONObject("twoColumnBrowseResultsRenderer")
+                    .getJSONArray("tabs")
+                    .getJSONObject(0)
+                    .getJSONObject("tabRenderer")
+                    .getJSONObject("content")
+                    .getJSONObject("sectionListRenderer")
+                    .getJSONArray("contents")
+                    .getJSONObject(0)
+                tabs.getJSONObject("itemSectionRenderer")
+                    .getJSONArray("contents")
+                    .getJSONObject(0)
+                    .getJSONObject("playlistVideoListRenderer")
+                    .getJSONArray("contents")
+            } catch (e: JSONException) {
+                rawJson.getJSONArray("onResponseReceivedActions")
+                    .getJSONObject(0)
+                    .getJSONObject("appendContinuationItemsAction")
+                    .getJSONArray("continuationItems")
+            }
+            try {
+                val continuation = importantContent.getJSONObject(importantContent.length() - 1)
+                    .getJSONObject("continuationItemRenderer")
+                    .getJSONObject("continuationEndpoint")
+                    .getJSONObject("continuationCommand")
+                    .getString("token")
+                val continuationEnd = buildContinuationUrl(continuation)
+                for (i in 0 until importantContent.length()) {
+                    swap.put(importantContent[i])
                 }
-
-                if (continuationEnd.length() > 0){
-                    for(int i = 0; i < continuationEnd.length(); i++){
-                        swap.put(continuationEnd.get(i));
+                if (continuationEnd.length() > 0) {
+                    for (i in 0 until continuationEnd.length()) {
+                        swap.put(continuationEnd[i])
                     }
                 }
-
-            } catch (Exception e) {
-                for(int i = 0; i < importantContent.length(); i++){
-                    swap.put(importantContent.get(i));
+            } catch (e: Exception) {
+                var i = 0
+                while (i < importantContent.length()) {
+                    swap.put(importantContent[i])
+                    i++
                 }
             }
-
-        }catch (Exception ignored){
+        } catch (ignored: Exception) {
         }
-        return swap;
+        return swap
     }
 
-    public ArrayList<String>  getVideos() throws Exception {
-        JSONArray video = extractVideos(getJson());
-        ArrayList<String> videosId = new ArrayList<>();
-        try {
-            for(int i = 0; i < video.length(); i++){
-                try{
-                    videosId.add("https://www.youtube.com/watch?v=" + video.getJSONObject(i).getJSONObject("playlistVideoRenderer").get("videoId").toString());
-                }catch (Exception ignored){
+    open val videos: List<String>?
+        get() {
+            val video = extractVideos(getJsonObj())
+            val videosId = mutableListOf<String>()
+            return try {
+                for (i in 0 until video.length()) {
+                    try {
+                        videosId.add(
+                            "https://www.youtube.com/watch?v=" + video.getJSONObject(i)
+                                .getJSONObject("playlistVideoRenderer")["videoId"].toString()
+                        )
+                    } catch (ignored: Exception) {
+                    }
                 }
+                videosId
+            } catch (e: JSONException) {
+                throw Error(e)
             }
-            return videosId;
-        } catch (JSONException e) {
-            throw new Error(e);
         }
+
+    private fun getSidebarInfo(i: Int): JSONObject {
+        return getJsonObj().getJSONObject("sidebar")
+            .getJSONObject("playlistSidebarRenderer")
+            .getJSONArray("items")
+            .getJSONObject(i)
     }
 
-    private JSONObject getSidebarInfo(Integer i) throws Exception {
-        return getJson().getJSONObject("sidebar")
-                .getJSONObject("playlistSidebarRenderer")
-                .getJSONArray("items")
-                .getJSONObject(i);
-    }
+    open val title: String?
+        get() = getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
+            .getJSONObject("title")
+            .getJSONArray("runs")
+            .getJSONObject(0)
+            .getString("text")
 
-    public String getTitle() throws Exception {
-        return getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
-                .getJSONObject("title")
-                .getJSONArray("runs")
-                .getJSONObject(0)
-                .getString("text");
-    }
-
-    public String getDescription() throws Exception {
-        try {
+    open val description: String?
+        get() = try {
             try {
-                return getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
-                        .getJSONObject("description")
-                        .getString("simpleText");
-            }catch (JSONException e) {
-                return getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
-                        .getJSONObject("description").getJSONArray("runs")
-                        .getJSONObject(0)
-                        .getString("text");
-            }
-        }catch (Exception e){
-            return null;
-        }
-    }
-
-    public String getViews() throws Exception {
-        return getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
-                .getJSONArray("stats")
-                .getJSONObject(1)
-                .getString("simpleText");
-    }
-
-    public String getLastUpdated() throws Exception {
-        try {
-            return getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
-                    .getJSONArray("stats").getJSONObject(2)
-                    .getJSONArray("runs").getJSONObject(1)
-                    .getString("text");
-        }catch (JSONException e){
-            return getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
-                    .getJSONArray("stats")
-                    .getJSONObject(2)
-                    .getJSONArray("runs")
+                getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
+                    .getJSONObject("description")
+                    .getString("simpleText")
+            } catch (e: JSONException) {
+                getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
+                    .getJSONObject("description").getJSONArray("runs")
                     .getJSONObject(0)
-                    .getString("text");
+                    .getString("text")
+            }
+        } catch (e: Exception) {
+            null
         }
-    }
 
-    public String getOwner() throws Exception {
-        return getSidebarInfo(1).getJSONObject("playlistSidebarSecondaryInfoRenderer")
-                .getJSONObject("videoOwner")
-                .getJSONObject("videoOwnerRenderer")
-                .getJSONObject("title").getJSONArray("runs")
-                .getJSONObject(0)
-                .getString("text");
-    }
+    open val views: String?
+        get() = getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
+            .getJSONArray("stats")
+            .getJSONObject(1)
+            .getString("simpleText")
 
-    public String getOwnerId() throws Exception {
-        return getSidebarInfo(1).getJSONObject("playlistSidebarSecondaryInfoRenderer")
-                .getJSONObject("videoOwner")
-                .getJSONObject("videoOwnerRenderer")
-                .getJSONObject("title")
+    open val lastUpdated: String?
+        get() = try {
+            getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
+                .getJSONArray("stats").getJSONObject(2)
+                .getJSONArray("runs").getJSONObject(1)
+                .getString("text")
+        } catch (e: JSONException) {
+            getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
+                .getJSONArray("stats")
+                .getJSONObject(2)
                 .getJSONArray("runs")
                 .getJSONObject(0)
-                .getJSONObject("navigationEndpoint")
-                .getJSONObject("browseEndpoint")
-                .getString("browseId");
-    }
+                .getString("text")
+        }
 
-    public String getOwnerUrl() throws Exception {
-        return "https://www.youtube.com/channel/" + getOwnerId();
-    }
+    open val owner: String?
+        get() = getSidebarInfo(1).getJSONObject("playlistSidebarSecondaryInfoRenderer")
+            .getJSONObject("videoOwner")
+            .getJSONObject("videoOwnerRenderer")
+            .getJSONObject("title").getJSONArray("runs")
+            .getJSONObject(0)
+            .getString("text")
 
-    public String length() throws Exception {
-        return getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
+    open val ownerId: String?
+        get() = getSidebarInfo(1).getJSONObject("playlistSidebarSecondaryInfoRenderer")
+            .getJSONObject("videoOwner")
+            .getJSONObject("videoOwnerRenderer")
+            .getJSONObject("title")
+            .getJSONArray("runs")
+            .getJSONObject(0)
+            .getJSONObject("navigationEndpoint")
+            .getJSONObject("browseEndpoint")
+            .getString("browseId")
+
+    open val ownerUrl: String?
+        get() = "https://www.youtube.com/channel/" + ownerId
+
+    open val length: String?
+        get() {
+            return getSidebarInfo(0).getJSONObject("playlistSidebarPrimaryInfoRenderer")
                 .getJSONArray("stats")
                 .getJSONObject(0)
                 .getJSONArray("runs")
                 .getJSONObject(0)
-                .getString("text");
-    }
-
+                .getString("text")
+        }
 }

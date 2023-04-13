@@ -1,15 +1,15 @@
-package javatube;
+package javatube
 
-import java.util.*;
+class CaptionQuery(captions: List<Captions>) {
+    var langCodeIndex: MutableMap<String, Captions> = HashMap()
 
-public class CaptionQuery {
-    Map<String, Captions> langCodeIndex = new HashMap<>();
-    public CaptionQuery(ArrayList<Captions> captions){
-        for(Captions code : captions){
-            langCodeIndex.put(code.getCode(), code);
+    init {
+        for (code in captions) {
+            langCodeIndex[code.code] = code
         }
     }
-    public Captions getByCode(String code){
-        return langCodeIndex.get(code);
+
+    fun getByCode(code: String): Captions {
+        return langCodeIndex[code]!!
     }
 }

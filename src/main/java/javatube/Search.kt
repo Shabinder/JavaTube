@@ -1,63 +1,57 @@
-package javatube;
+package javatube
 
-import org.json.JSONArray;
-import org.json.JSONObject;
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.IOException
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
-import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-
-public class Search {
-
-    private final String query;
-
-    public Search(String query){
-        this.query = query;
+class Search(private val query: String) {
+    private fun safeQuery(): String {
+        return URLEncoder.encode(query, StandardCharsets.UTF_8)
     }
 
-    private String safeQuery(){
-        return URLEncoder.encode(this.query, StandardCharsets.UTF_8);
+    private fun baseData(): String {
+        return "{\"context\": {\"client\": {\"clientName\": \"WEB\", \"clientVersion\": \"2.20200720.00.02\"}}}"
     }
 
-    private String baseData(){
-        return "{\"context\": {\"client\": {\"clientName\": \"WEB\", \"clientVersion\": \"2.20200720.00.02\"}}}";
+    private fun baseParam(): String {
+        return "https://www.youtube.com/youtubei/v1/search?query=" + safeQuery() + "&key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&contentCheckOk=True&racyCheckOk=True"
     }
 
-    private String baseParam(){
-        return "https://www.youtube.com/youtubei/v1/search?query=" + safeQuery() + "&key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&contentCheckOk=True&racyCheckOk=True";
+    @Throws(IOException::class)
+    private fun fetchQuery(): String {
+        return InnerTube.post(baseParam(), baseData())
     }
 
-    private String fetchQuery() throws IOException {
-        return InnerTube.post(baseParam(), baseData());
-    }
-
-    private ArrayList<Youtube> fetchAndParse() throws Exception {
-        JSONObject rawResults = new JSONObject(fetchQuery());
-        JSONObject sections = rawResults.getJSONObject("contents")
-                .getJSONObject("twoColumnSearchResultsRenderer")
-                .getJSONObject("primaryContents")
-                .getJSONObject("sectionListRenderer")
+    @Throws(Exception::class)
+    private fun fetchAndParse(): List<Youtube> {
+        val rawResults = JSONObject(fetchQuery())
+        val sections = rawResults.getJSONObject("contents")
+            .getJSONObject("twoColumnSearchResultsRenderer")
+            .getJSONObject("primaryContents")
+            .getJSONObject("sectionListRenderer")
+            .getJSONArray("contents")
+            .getJSONObject(0)
+        val rawVideoList = JSONArray(
+            sections.getJSONObject("itemSectionRenderer")
                 .getJSONArray("contents")
-                .getJSONObject(0);
-
-        JSONArray rawVideoList = new JSONArray(sections.getJSONObject("itemSectionRenderer")
-                .getJSONArray("contents"));
-        ArrayList<Youtube> videos = new ArrayList<>();
-        for(int i = 0; i < rawVideoList.length() - 1; i++) {
+        )
+        val videos = mutableListOf<Youtube>()
+        for (i in 0 until rawVideoList.length() - 1) {
             if (!rawVideoList.getJSONObject(i).has("videoRenderer")) {
-                continue;
+                continue
             }
-            JSONObject vidRenderer = rawVideoList.getJSONObject(i).getJSONObject("videoRenderer");
-            String vidId = vidRenderer.getString("videoId");
-            String vidUrl = "https://www.youtube.com/watch?v=" + vidId;
-            videos.add(new Youtube(vidUrl));
+            val vidRenderer = rawVideoList.getJSONObject(i).getJSONObject("videoRenderer")
+            val vidId = vidRenderer.getString("videoId")
+            val vidUrl = "https://www.youtube.com/watch?v=$vidId"
+            videos.add(Youtube(vidUrl))
         }
-        return videos;
+        return videos
     }
 
-    public ArrayList<Youtube> results() throws Exception {
-        return fetchAndParse();
+    @Throws(Exception::class)
+    fun results(): List<Youtube> {
+        return fetchAndParse()
     }
-
 }

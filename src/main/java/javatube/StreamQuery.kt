@@ -1,392 +1,371 @@
-package javatube;
+package javatube
 
-import java.util.*;
+import java.util.LinkedList
 
-public class StreamQuery{
-    private final ArrayList<Stream> fmtStreams;
-    Map<Integer, Stream> itagIndex = new HashMap<>();
-    public StreamQuery(ArrayList<Stream> fmt_streams){
-        fmtStreams = fmt_streams;
-        for (Stream fmt_stream : fmt_streams) {
-            itagIndex.put(fmt_stream.getItag(), fmt_stream);
+class StreamQuery(val all: List<Stream>) {
+    var itagIndex: MutableMap<Int?, Stream> = HashMap()
+
+    init {
+        for (fmt_stream in all) {
+            itagIndex[fmt_stream.itag] = fmt_stream
         }
     }
 
-    public ArrayList<Stream> getAll(){
-        return fmtStreams;
-    }
-
-    public StreamQuery filter(HashMap<String, String> filters){
-
-        ArrayList<Stream> streamFilter = new ArrayList<>();
-        if(filters.containsKey("res")){
-            if(!streamFilter.isEmpty()){
-                streamFilter.retainAll(new ArrayList<>(getResolution(filters.get("res"))));
-            }else{
-                streamFilter.addAll(getResolution(filters.get("res")));
+    fun filter(filters: MutableMap<String, String>): StreamQuery {
+        val streamFilter = mutableListOf<Stream>()
+        if (filters.containsKey("res")) {
+            if (streamFilter.isNotEmpty()) {
+                streamFilter.retainAll(getResolution(filters["res"].toString()))
+            } else {
+                streamFilter.addAll(getResolution(filters["res"].toString()))
             }
-            if(streamFilter.isEmpty()){
-                filters.clear();
+            if (streamFilter.isEmpty()) {
+                filters.clear()
             }
         }
-
-        if(filters.containsKey("fps")){
-            if(!streamFilter.isEmpty()){
-                streamFilter.retainAll(new ArrayList<>(getFps(filters.get("fps"))));
-            }else{
-                streamFilter.addAll(getFps(filters.get("fps")));
+        if (filters.containsKey("fps")) {
+            if (streamFilter.isNotEmpty()) {
+                streamFilter.retainAll(getFps(filters["fps"]!!))
+            } else {
+                streamFilter.addAll(getFps(filters["fps"]!!))
             }
-            if(streamFilter.isEmpty()){
-                filters.clear();
-            }
-        }
-
-        if(filters.containsKey("mineType")){
-            if(!streamFilter.isEmpty()){
-                streamFilter.retainAll(new ArrayList<>(getMineType(filters.get("mineType"))));
-            }else{
-                streamFilter.addAll(getMineType(filters.get("mineType")));
-            }
-            if(streamFilter.isEmpty()){
-                filters.clear();
+            if (streamFilter.isEmpty()) {
+                filters.clear()
             }
         }
-
-        if(filters.containsKey("type")){
-            if(!streamFilter.isEmpty()){
-                streamFilter.retainAll(new ArrayList<>(getType(filters.get("type"))));
-            }else{
-                streamFilter.addAll(getType(filters.get("type")));
+        if (filters.containsKey("mineType")) {
+            if (streamFilter.isNotEmpty()) {
+                streamFilter.retainAll(getMineType(filters["mineType"]!!))
+            } else {
+                streamFilter.addAll(getMineType(filters["mineType"]!!))
             }
-            if(streamFilter.isEmpty()){
-                filters.clear();
-            }
-        }
-
-        if(filters.containsKey("subType")){
-            if(!streamFilter.isEmpty()){
-                streamFilter.retainAll(new ArrayList<>(getSubtype(filters.get("subType"))));
-            }else{
-                streamFilter.addAll(getSubtype(filters.get("subType")));
-            }
-            if(streamFilter.isEmpty()){
-                filters.clear();
+            if (streamFilter.isEmpty()) {
+                filters.clear()
             }
         }
-
-        if(filters.containsKey("abr")){
-            if(!streamFilter.isEmpty()){
-                streamFilter.retainAll(new ArrayList<>(getAbr(filters.get("abr"))));
-            }else{
-                streamFilter.addAll(getAbr(filters.get("abr")));
+        if (filters.containsKey("type")) {
+            if (streamFilter.isNotEmpty()) {
+                streamFilter.retainAll(getType(filters["type"]!!))
+            } else {
+                streamFilter.addAll(getType(filters["type"]!!))
             }
-            if(streamFilter.isEmpty()){
-                filters.clear();
-            }
-
-        }
-
-        if(filters.containsKey("videoCodec")){
-            if(!streamFilter.isEmpty()){
-                streamFilter.retainAll(new ArrayList<>(getVideoCodec(filters.get("videoCodec"))));
-            }else{
-                streamFilter.addAll(getVideoCodec(filters.get("videoCodec")));
-            }
-            if(streamFilter.isEmpty()){
-                filters.clear();
+            if (streamFilter.isEmpty()) {
+                filters.clear()
             }
         }
-        if(filters.containsKey("audioCodec")){
-            if(!streamFilter.isEmpty()){
-                streamFilter.retainAll(new ArrayList<>(getAudioCodec(filters.get("audioCodec"))));
-            }else{
-                streamFilter.addAll(getAudioCodec(filters.get("audioCodec")));
+        if (filters.containsKey("subType")) {
+            if (streamFilter.isNotEmpty()) {
+                streamFilter.retainAll(getSubtype(filters["subType"]!!))
+            } else {
+                streamFilter.addAll(getSubtype(filters["subType"]!!))
             }
-            if(streamFilter.isEmpty()){
-                filters.clear();
+            if (streamFilter.isEmpty()) {
+                filters.clear()
             }
         }
-        if(filters.containsKey("onlyAudio")){
-            if(Objects.equals(filters.get("onlyAudio"), "true")){
-                if(!streamFilter.isEmpty()){
-                    streamFilter.retainAll(new ArrayList<>(onlyAudio()));
-                }else{
-                    streamFilter.addAll(onlyAudio());
+        if (filters.containsKey("abr")) {
+            if (streamFilter.isNotEmpty()) {
+                streamFilter.retainAll(getAbr(filters["abr"]!!))
+            } else {
+                streamFilter.addAll(getAbr(filters["abr"]!!))
+            }
+            if (streamFilter.isEmpty()) {
+                filters.clear()
+            }
+        }
+        if (filters.containsKey("videoCodec")) {
+            if (streamFilter.isNotEmpty()) {
+                streamFilter.retainAll(getVideoCodec(filters["videoCodec"]!!))
+            } else {
+                streamFilter.addAll(getVideoCodec(filters["videoCodec"]!!))
+            }
+            if (streamFilter.isEmpty()) {
+                filters.clear()
+            }
+        }
+        if (filters.containsKey("audioCodec")) {
+            if (streamFilter.isNotEmpty()) {
+                streamFilter.retainAll(getAudioCodec(filters["audioCodec"]!!))
+            } else {
+                streamFilter.addAll(getAudioCodec(filters["audioCodec"]!!))
+            }
+            if (streamFilter.isEmpty()) {
+                filters.clear()
+            }
+        }
+        if (filters.containsKey("onlyAudio")) {
+            if (filters["onlyAudio"] == "true") {
+                if (streamFilter.isNotEmpty()) {
+                    streamFilter.retainAll(onlyAudio())
+                } else {
+                    streamFilter.addAll(onlyAudio())
                 }
-                if(streamFilter.isEmpty()){
-                    filters.clear();
+                if (streamFilter.isEmpty()) {
+                    filters.clear()
                 }
             }
         }
-        if(filters.containsKey("onlyVideo")){
-            if(Objects.equals(filters.get("onlyVideo"), "true")){
-                if(!streamFilter.isEmpty()){
-                    streamFilter.retainAll(new ArrayList<>(onlyVideo()));
-                }else{
-                    streamFilter.addAll(onlyVideo());
+        if (filters.containsKey("onlyVideo")) {
+            if (filters["onlyVideo"] == "true") {
+                if (streamFilter.isNotEmpty()) {
+                    streamFilter.retainAll(onlyVideo())
+                } else {
+                    streamFilter.addAll(onlyVideo())
                 }
-                if(streamFilter.isEmpty()){
-                    filters.clear();
-                }
-            }
-        }
-        if(filters.containsKey("progressive")){
-            if(Objects.equals(filters.get("progressive"), "true")){
-                if(!streamFilter.isEmpty()){
-                    streamFilter.retainAll(new ArrayList<>(getProgressive()));
-                }else{
-                    streamFilter.addAll(getProgressive());
-                }
-                if(streamFilter.isEmpty()){
-                    filters.clear();
-                }
-            }else if (Objects.equals(filters.get("progressive"), "false")){
-                if(!streamFilter.isEmpty()){
-                    streamFilter.retainAll(new ArrayList<>(getAdaptive()));
-                }else{
-                    streamFilter.addAll(getAdaptive());
-                }
-                if(streamFilter.isEmpty()){
-                    filters.clear();
+                if (streamFilter.isEmpty()) {
+                    filters.clear()
                 }
             }
         }
-        if(filters.containsKey("adaptive")){
-            if(Objects.equals(filters.get("adaptive"), "true")){
-                if(!streamFilter.isEmpty()){
-                    streamFilter.retainAll(new ArrayList<>(getAdaptive()));
-                }else{
-                    streamFilter.addAll(getAdaptive());
+        if (filters.containsKey("progressive")) {
+            if (filters["progressive"] == "true") {
+                if (streamFilter.isNotEmpty()) {
+                    streamFilter.retainAll(progressive)
+                } else {
+                    streamFilter.addAll(progressive)
                 }
-                if(streamFilter.isEmpty()){
-                    filters.clear();
+                if (streamFilter.isEmpty()) {
+                    filters.clear()
                 }
-            } else if (Objects.equals(filters.get("adaptive"), "false")) {
-                if(!streamFilter.isEmpty()){
-                    streamFilter.retainAll(new ArrayList<>(getProgressive()));
-                }else{
-                    streamFilter.addAll(getProgressive());
+            } else if (filters["progressive"] == "false") {
+                if (streamFilter.isNotEmpty()) {
+                    streamFilter.retainAll(adaptive)
+                } else {
+                    streamFilter.addAll(adaptive)
                 }
-                if(streamFilter.isEmpty()){
-                    filters.clear();
-                }
-            }
-        }
-
-        return new StreamQuery(streamFilter);
-    }
-
-    private ArrayList<Stream> getResolution(String re){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if(Objects.equals(st.getResolution(), re)){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> getFps(String fps){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if(Objects.equals(st.getFps(), Integer.parseInt(fps))){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> getMineType(String mineType){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if(Objects.equals(st.getMimeType(), mineType)){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> getType(String type){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if(Objects.equals(st.getType(), type)){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> getSubtype(String subtype){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if(Objects.equals(st.getSubType(), subtype)){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> getAbr(String abr){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if(Objects.equals(st.getAbr(), abr)){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> getVideoCodec(String videoCodec){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if(Objects.equals(st.getVideoCodec(), videoCodec)){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> getAudioCodec(String audioCodec){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if(Objects.equals(st.getAudioCodec(), audioCodec)){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> onlyAudio(){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if((st.includeAudioTrack()) && (!st.includeVideoTrack())){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> onlyVideo(){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if((st.includeVideoTrack() && (!st.includeAudioTrack()))){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> getProgressive(){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if(st.isProgressive()){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> getAdaptive(){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream st : fmtStreams){
-            if(st.isAdaptive()){
-                filter.add(st);
-            }
-        }
-        return filter;
-    }
-
-    private ArrayList<Stream> reverseArrayList(ArrayList<Stream> aList) {
-        ArrayList<Stream> revArrayList = new ArrayList<>();
-        for (int i = aList.size() - 1; i >= 0; i--) {
-            revArrayList.add(aList.get(i));
-        }
-        return revArrayList;
-    }
-
-    private static ArrayList<Stream> sortByValue(HashMap<Stream, Integer> hm) {
-        List<Map.Entry<Stream, Integer>> list = new LinkedList<>(hm.entrySet());
-        list.sort(Map.Entry.comparingByValue());
-        ArrayList<Stream> ordered = new ArrayList<>();
-        for (Map.Entry<Stream, Integer> aa : list) {
-            ordered.add(aa.getKey());
-        }
-        return ordered;
-    }
-
-    public StreamQuery orderBy(String by) throws Exception {
-        HashMap<Stream, Integer> map = new HashMap<>();
-        for(Stream s : fmtStreams){
-            if(Objects.equals(by, "res")){
-                if(s.getResolution() != null){
-                    map.put(s, Integer.parseInt(s.getResolution().replace("p", "")));
-                }
-            } else if (Objects.equals(by, "abr")) {
-                if(s.getAbr() != null){
-                    map.put(s, Integer.parseInt(s.getAbr().replace("kbps", "")));
-                }
-            } else if (Objects.equals(by, "fps")) {
-                if(s.getFps() != null){
-                    map.put(s, s.getFps());
-                }
-            }else{
-                throw new Exception("InvalidParameter");
-            }
-        }
-        return new StreamQuery(sortByValue(map));
-    }
-
-    public StreamQuery getOtf(Boolean otf){
-        ArrayList<Stream> filter = new ArrayList<>();
-        for(Stream s : fmtStreams){
-            if(otf){
-                if(s.getIsOtf()){
-                    filter.add(s);
-                }
-            }else {
-                if(!s.getIsOtf()){
-                    filter.add(s);
+                if (streamFilter.isEmpty()) {
+                    filters.clear()
                 }
             }
         }
-        return new StreamQuery(filter);
+        if (filters.containsKey("adaptive")) {
+            if (filters["adaptive"] == "true") {
+                if (streamFilter.isNotEmpty()) {
+                    streamFilter.retainAll(adaptive)
+                } else {
+                    streamFilter.addAll(adaptive)
+                }
+                if (streamFilter.isEmpty()) {
+                    filters.clear()
+                }
+            } else if (filters["adaptive"] == "false") {
+                if (streamFilter.isNotEmpty()) {
+                    streamFilter.retainAll(progressive)
+                } else {
+                    streamFilter.addAll(progressive)
+                }
+                if (streamFilter.isEmpty()) {
+                    filters.clear()
+                }
+            }
+        }
+        return StreamQuery(streamFilter)
     }
 
-    public StreamQuery getDesc(){
-        return new StreamQuery(reverseArrayList(fmtStreams));
+    private fun getResolution(re: String): List<Stream> {
+        val filter = mutableListOf<Stream>()
+        for (st in all) {
+            if (st.resolution == re) {
+                filter.add(st)
+            }
+        }
+        return filter
     }
 
-    public StreamQuery getAsc(){
-        return new StreamQuery(fmtStreams);
+    private fun getFps(fps: String): List<Stream> {
+        val filter = mutableListOf<Stream>()
+        for (st in all) {
+            if (st.fps == fps.toInt()) {
+                filter.add(st)
+            }
+        }
+        return filter
     }
 
-    public Stream getFirst(){
-        return fmtStreams.get(0);
+    private fun getMineType(mineType: String): List<Stream> {
+        val filter = mutableListOf<Stream>()
+        for (st in all) {
+            if (st.mimeType == mineType) {
+                filter.add(st)
+            }
+        }
+        return filter
     }
 
-    public Stream getLast(){
-        return fmtStreams.get(fmtStreams.size() - 1);
+    private fun getType(type: String): List<Stream> {
+        val filter = mutableListOf<Stream>()
+        for (st in all) {
+            if (st.type == type) {
+                filter.add(st)
+            }
+        }
+        return filter
     }
 
-    public Stream getOnlyAudio(){
-        HashMap<String, String> filters = new HashMap<>();
-        filters.put("onlyAudio", "true");
-        filters.put("subType", "mp4");
-        return filter(filters).getLast();
+    private fun getSubtype(subtype: String): List<Stream> {
+        val filter = mutableListOf<Stream>()
+        for (st in all) {
+            if (st.subType == subtype) {
+                filter.add(st)
+            }
+        }
+        return filter
     }
 
-    public Stream getLowestResolution(){
-        HashMap<String, String> filters = new HashMap<>();
-        filters.put("progressive", "true");
-        filters.put("subType", "mp4");
-        return filter(filters).getFirst();
+    private fun getAbr(abr: String): List<Stream> {
+        val filter = mutableListOf<Stream>()
+        for (st in all) {
+            if (st.abr == abr) {
+                filter.add(st)
+            }
+        }
+        return filter
     }
 
-    public Stream getHighestResolution(){
-        HashMap<String, String> filters = new HashMap<>();
-        filters.put("progressive", "true");
-        filters.put("subType", "mp4");
-        return filter(filters).getLast();
+    private fun getVideoCodec(videoCodec: String): List<Stream> {
+        val filter = mutableListOf<Stream>()
+        for (st in all) {
+            if (st.videoCodec == videoCodec) {
+                filter.add(st)
+            }
+        }
+        return filter
     }
 
+    private fun getAudioCodec(audioCodec: String): List<Stream> {
+        val filter = mutableListOf<Stream>()
+        for (st in all) {
+            if (st.audioCodec == audioCodec) {
+                filter.add(st)
+            }
+        }
+        return filter
+    }
+
+    private fun onlyAudio(): List<Stream> {
+        val filter = mutableListOf<Stream>()
+        for (st in all) {
+            if (st.includeAudioTrack() && !st.includeVideoTrack()) {
+                filter.add(st)
+            }
+        }
+        return filter
+    }
+
+    private fun onlyVideo(): List<Stream> {
+        val filter = mutableListOf<Stream>()
+        for (st in all) {
+            if (st.includeVideoTrack() && !st.includeAudioTrack()) {
+                filter.add(st)
+            }
+        }
+        return filter
+    }
+
+    private val progressive: List<Stream>
+        private get() {
+            val filter = mutableListOf<Stream>()
+            for (st in all) {
+                if (st.isProgressive) {
+                    filter.add(st)
+                }
+            }
+            return filter
+        }
+    private val adaptive: List<Stream>
+        get() {
+            val filter = mutableListOf<Stream>()
+            for (st in all) {
+                if (st.isAdaptive) {
+                    filter.add(st)
+                }
+            }
+            return filter
+        }
+
+
+    @Throws(Exception::class)
+    fun orderBy(by: String?): StreamQuery {
+        val map = HashMap<Stream, Int>()
+        for (s in all) {
+            if (by == "res") {
+                if (s.resolution != null) {
+                    map[s] = s.resolution.replace("p", "").toInt()
+                }
+            } else if (by == "abr") {
+                if (s.abr != null) {
+                    map[s] = s.abr.replace("kbps", "").toInt()
+                }
+            } else if (by == "fps") {
+                if (s.fps != null) {
+                    map[s] = s.fps!!
+                }
+            } else {
+                throw Exception("InvalidParameter")
+            }
+        }
+        return StreamQuery(sortByValue(map))
+    }
+
+    fun getOtf(otf: Boolean): StreamQuery {
+        val filter = mutableListOf<Stream>()
+        for (s in all) {
+            if (otf) {
+                if (s.isOtf) {
+                    filter.add(s)
+                }
+            } else {
+                if (!s.isOtf) {
+                    filter.add(s)
+                }
+            }
+        }
+        return StreamQuery(filter)
+    }
+
+    val desc: StreamQuery
+        get() = StreamQuery(all.reversed())
+    val asc: StreamQuery
+        get() = StreamQuery(all)
+    val first: Stream
+        get() = all[0]
+    val last: Stream
+        get() = all[all.size - 1]
+    val onlyAudio: Stream
+        get() {
+            val filters = HashMap<String, String>()
+            filters["onlyAudio"] = "true"
+            filters["subType"] = "mp4"
+            return filter(filters).last
+        }
+    val lowestResolution: Stream
+        get() {
+            val filters = HashMap<String, String>()
+            filters["progressive"] = "true"
+            filters["subType"] = "mp4"
+            return filter(filters).first
+        }
+    val highestResolution: Stream
+        get() {
+            val filters = HashMap<String, String>()
+            filters["progressive"] = "true"
+            filters["subType"] = "mp4"
+            return filter(filters).last
+        }
+
+    companion object {
+        private fun sortByValue(hm: HashMap<Stream, Int>): List<Stream> {
+            val list: List<Map.Entry<Stream, Int>> =
+                LinkedList<Map.Entry<Stream, Int>>(hm.entries).sortedWith { o1, o2 ->
+                    val v1 = o1.value
+                    val v2 = o2.value
+                    v2.compareTo(v1)
+                }
+            val ordered = mutableListOf<Stream>()
+            for ((key) in list) {
+                ordered.add(key)
+            }
+            return ordered
+        }
+    }
 }

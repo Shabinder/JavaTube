@@ -1,216 +1,247 @@
-package javatube;
+package javatube
 
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.util.*;
-import java.util.regex.*;
-import org.json.*;
+import org.json.JSONArray
+import org.json.JSONException
+import org.json.JSONObject
+import java.io.IOException
+import java.io.UnsupportedEncodingException
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
+import java.util.regex.Pattern
 
+import kotlin.Throws
 
-public class Youtube {
+class Youtube(private val urlVideo: String) {
+    private val watchUrl: String
 
-    private final String urlVideo;
-    private final String watchUrl;
-    private JSONObject vidInfo = null;
-    private String html = null;
-    private String js = null;
+    private var vidInfo: JSONObject? = null
+        private get() {
+            if (field == null) {
+                field = setVidInfo()
+            }
+            return field
+        }
 
-    public Youtube(String url) throws Exception {
-        urlVideo = url;
-        watchUrl = "https://www.youtube.com/watch?v=" + videoId();
+    private var html: String? = null
+        private get() {
+            if (field == null) {
+                field = setHtml()
+            }
+            return field
+        }
+
+    private var js: String? = null
+        private get() {
+            if (field == null) {
+                field = setJs()
+            }
+            return field
+        }
+
+    init {
+        watchUrl = "https://www.youtube.com/watch?v=" + videoId()
     }
 
-    private String videoId() throws Exception {
-        Pattern pattern = Pattern.compile("(?:v=|/)([0-9A-Za-z_-]{11}).*");
-        Matcher matcher = pattern.matcher(urlVideo);
-        if (matcher.find()) {
-            return matcher.group(1);
-        }else {
-            throw new Exception("RegexMatcherError: " + pattern);
+    @Throws(Exception::class)
+    private fun videoId(): String {
+        val pattern = Pattern.compile("(?:v=|/)([0-9A-Za-z_-]{11}).*")
+        val matcher = pattern.matcher(urlVideo)
+        return if (matcher.find()) {
+            matcher.group(1)
+        } else {
+            throw Exception("RegexMatcherError: $pattern")
         }
     }
 
-    private String setHtml() throws IOException {
-        return InnerTube.downloadWebPage(watchUrl);
+    @Throws(IOException::class)
+    private fun setHtml(): String {
+        return InnerTube.downloadWebPage(watchUrl)
     }
 
-    private String getHtml() throws Exception {
-        if(html == null){
-            html = setHtml();
+    @Throws(Exception::class)
+    private fun setVidInfo(): JSONObject {
+        val pattern = "ytInitialPlayerResponse\\s=\\s(\\{\\\"responseContext\\\":.*?\\});</script>"
+        val regex = Pattern.compile(pattern)
+        val matcher = regex.matcher(html)
+        return if (matcher.find()) {
+            JSONObject(matcher.group(1))
+        } else {
+            throw Exception("RegexMatcherError: $pattern")
         }
-        return html;
     }
 
-    private static JSONArray applyDescrambler(JSONObject streamData){
-        JSONArray formats = new JSONArray();
-        for(int i = 0; streamData.getJSONArray("formats").length() > i; i++){
-            formats.put(streamData.getJSONArray("formats").get(i));
+    @Throws(Exception::class)
+    private fun streamData(): JSONObject {
+        return vidInfo!!.getJSONObject("streamingData")
+    }
+
+    @Throws(UnsupportedEncodingException::class)
+    private fun decodeURL(s: String): String {
+        return URLDecoder.decode(s, StandardCharsets.UTF_8.name())
+    }
+
+    @Throws(Exception::class)
+    private fun fmtStreams(): List<Stream> {
+        val streamManifest: JSONArray = Youtube.Companion.applyDescrambler(streamData())
+        val fmtStream = mutableListOf<Stream>()
+        val title = title
+        var video: Stream
+        val cipher = Cipher(js!!)
+        var i = 0
+        while (streamManifest.length() > i) {
+            if (streamManifest.getJSONObject(i).has("signatureCipher")) {
+                val oldUrl = decodeURL(streamManifest.getJSONObject(i).getString("url"))
+                streamManifest.getJSONObject(i).remove("url")
+                streamManifest.getJSONObject(i).put(
+                    "url",
+                    oldUrl + "&sig=" + cipher.getSignature(
+                        decodeURL(
+                            streamManifest.getJSONObject(i).getString("s")
+                        ).split("(?!^)".toRegex()).dropLastWhile { it.isEmpty() })
+                )
+            }
+            val oldUrl = streamManifest.getJSONObject(i).getString("url")
+            val matcher = Pattern.compile("&n=(.*?)&").matcher(oldUrl)
+            if (matcher.find()) {
+                val newUrl = oldUrl.replaceFirst(
+                    "&n=(.*?)&".toRegex(),
+                    "&n=" + cipher.calculateN(matcher.group(1)) + "&"
+                )
+                streamManifest.getJSONObject(i).put("url", newUrl)
+            }
+            video = Stream(streamManifest.getJSONObject(i), title)
+            fmtStream.add(video)
+            i++
         }
-        for(int i = 0; streamData.getJSONArray("adaptiveFormats").length() > i; i++){
-            formats.put(streamData.getJSONArray("adaptiveFormats").get(i));
+        return fmtStream
+    }
+
+    private val ytPlayerJs: String
+        get() {
+            val pattern = Pattern.compile("(/s/player/[\\w\\d]+/[\\w\\d_/.]+/base\\.js)")
+            val matcher = pattern.matcher(html)
+            return if (matcher.find()) {
+                "https://youtube.com" + matcher.group(1)
+            } else {
+                throw Exception("RegexMatcherError: $pattern")
+            }
         }
-        for(int i = 0; i < formats.length(); i++){
-            if(formats.getJSONObject(i).has("signatureCipher")){
-                String rawSig = formats.getJSONObject(i).getString("signatureCipher").replace("sp=sig", "");
-                for(int j = 0; j < rawSig.split("&").length; j++){
-                    if(Arrays.asList(rawSig.split("&")).get(j).startsWith("url")){
-                        formats.getJSONObject(i).put("url", Arrays.asList(rawSig.split("&")).get(j).replace("url=", ""));
-                    }else if(Arrays.asList(rawSig.split("&")).get(j).startsWith("s")){
-                        formats.getJSONObject(i).put("s", Arrays.asList(rawSig.split("&")).get(j).replace("s=", ""));
+
+    private fun setJs(): String {
+        return InnerTube.downloadWebPage(ytPlayerJs)
+    }
+
+    val title: String
+        get() = vidInfo!!.getJSONObject("videoDetails")
+            .getString("title")
+
+    val description: String
+        get() = vidInfo!!.getJSONObject("videoDetails")
+            .getString("shortDescription")
+
+    val publishDate: String
+        get() {
+            val pattern =
+                Pattern.compile("(?<=itemprop=\"datePublished\" content=\")\\d{4}-\\d{2}-\\d{2}")
+            val matcher = pattern.matcher(html)
+            return if (matcher.find()) {
+                matcher.group(0)
+            } else {
+                throw Exception("RegexMatcherError: $pattern")
+            }
+        }
+
+    @Throws(Exception::class)
+    fun length(): Int {
+        return vidInfo!!.getJSONObject("videoDetails")
+            .getInt("lengthSeconds")
+    }
+
+    val thumbnailUrl: String
+        get() {
+            val thumbnails = vidInfo!!.getJSONObject("videoDetails")
+                .getJSONObject("thumbnail")
+                .getJSONArray("thumbnails")
+            return thumbnails.getJSONObject(thumbnails.length() - 1).getString("url")
+        }
+
+    val views: Int
+        get() = vidInfo!!.getJSONObject("videoDetails")
+            .getString("viewCount").toInt()
+
+    val author: String
+        get() = vidInfo!!.getJSONObject("videoDetails")
+            .getString("author")
+
+    val captionTracks: List<Captions>
+        get() = try {
+            val rawTracks = vidInfo!!.getJSONObject("captions")
+                .getJSONObject("playerCaptionsTracklistRenderer")
+                .getJSONArray("captionTracks")
+            val captions = mutableListOf<Captions>()
+            for (i in 0 until rawTracks.length() - 1) {
+                captions.add(Captions(rawTracks.getJSONObject(i)))
+            }
+            captions
+        } catch (e: JSONException) {
+            emptyList()
+        }
+
+    val captions: CaptionQuery
+        get() = CaptionQuery(captionTracks)
+
+    val keywords: JSONArray
+        get() = try {
+            vidInfo!!.getJSONObject("videoDetails")
+                .getJSONArray("keywords")
+        } catch (e: JSONException) {
+            JSONArray()
+        }
+
+    fun streams(): StreamQuery {
+        return StreamQuery(fmtStreams())
+    }
+
+    companion object {
+        private fun applyDescrambler(streamData: JSONObject): JSONArray {
+            val formats = JSONArray()
+            run {
+                var i = 0
+                while (streamData.getJSONArray("formats").length() > i) {
+                    formats.put(streamData.getJSONArray("formats")[i])
+                    i++
+                }
+            }
+            run {
+                var i = 0
+                while (streamData.getJSONArray("adaptiveFormats").length() > i) {
+                    formats.put(streamData.getJSONArray("adaptiveFormats")[i])
+                    i++
+                }
+            }
+            for (i in 0 until formats.length()) {
+                if (formats.getJSONObject(i).has("signatureCipher")) {
+                    val rawSig =
+                        formats.getJSONObject(i).getString("signatureCipher").replace("sp=sig", "")
+
+                    for (j in rawSig.split("&".toRegex()).dropLastWhile { it.isEmpty() }) {
+                        when {
+                            j.startsWith("url") -> {
+                                formats.getJSONObject(i).put(
+                                    "url",
+                                    j.replace("url=", ""))
+                            }
+
+                            j.startsWith("s") -> {
+                                formats.getJSONObject(i).put(
+                                    "s",
+                                    j.replace("s=", ""))
+                            }
+                        }
                     }
                 }
             }
+            return formats
         }
-        return formats;
-    }
-
-    private JSONObject setVidInfo() throws Exception {
-        String pattern = "ytInitialPlayerResponse\\s=\\s(\\{\\\"responseContext\\\":.*?\\});</script>";
-        Pattern regex = Pattern.compile(pattern);
-        Matcher matcher = regex.matcher(getHtml());
-        if(matcher.find()){
-           return new JSONObject(matcher.group(1));
-        }else {
-            throw new Exception("RegexMatcherError: " + pattern);
-        }
-    }
-
-    private JSONObject getVidInfo() throws Exception {
-        if(vidInfo == null){
-            vidInfo = setVidInfo();
-        }
-        return vidInfo;
-    }
-
-    private JSONObject streamData() throws Exception {
-        return getVidInfo().getJSONObject("streamingData");
-    }
-
-    private String decodeURL(String s) throws UnsupportedEncodingException {
-        return URLDecoder.decode(s, StandardCharsets.UTF_8.name());
-    }
-
-    private ArrayList<Stream> fmtStreams() throws Exception {
-
-        JSONArray streamManifest = applyDescrambler(streamData());
-
-        ArrayList<Stream> fmtStream = new ArrayList<>();
-        String title = getTitle();
-        Stream video;
-        Cipher cipher = new Cipher(getJs());
-        for (int i = 0; streamManifest.length() > i; i++) {
-            if(streamManifest.getJSONObject(i).has("signatureCipher")){
-                String oldUrl = decodeURL(streamManifest.getJSONObject(i).getString("url"));
-                streamManifest.getJSONObject(i).remove("url");
-                streamManifest.getJSONObject(i).put("url", oldUrl + "&sig=" + cipher.getSignature(decodeURL(streamManifest.getJSONObject(i).getString("s")).split("(?!^)")));
-            }
-
-            String oldUrl = streamManifest.getJSONObject(i).getString("url");
-            Matcher matcher = Pattern.compile("&n=(.*?)&").matcher(oldUrl);
-            if (matcher.find()) {
-                String newUrl = oldUrl.replaceFirst("&n=(.*?)&", "&n=" + cipher.calculateN(matcher.group(1)) + "&");
-                streamManifest.getJSONObject(i).put("url", newUrl);
-            }
-
-            video = new Stream(streamManifest.getJSONObject(i), title);
-            fmtStream.add(video);
-        }
-        return fmtStream;
-    }
-
-    private String getYtPlayerJs() throws Exception {
-        Pattern pattern = Pattern.compile("(/s/player/[\\w\\d]+/[\\w\\d_/.]+/base\\.js)");
-        Matcher matcher = pattern.matcher(getHtml());
-        if (matcher.find()) {
-            return "https://youtube.com" + matcher.group(1);
-        }else {
-            throw new Exception("RegexMatcherError: " + pattern);
-        }
-    }
-
-    private String setJs() throws Exception {
-        return InnerTube.downloadWebPage(getYtPlayerJs());
-    }
-    private String getJs() throws Exception {
-        if(js == null){
-            js = setJs();
-        }
-        return js;
-    }
-
-    public String getTitle() throws Exception {
-        return getVidInfo().getJSONObject("videoDetails")
-                .getString("title");
-    }
-
-    public String getDescription() throws Exception {
-        return getVidInfo().getJSONObject("videoDetails")
-                .getString("shortDescription");
-    }
-
-    public String getPublishDate() throws Exception {
-        Pattern pattern = Pattern.compile("(?<=itemprop=\"datePublished\" content=\")\\d{4}-\\d{2}-\\d{2}");
-        Matcher matcher = pattern.matcher(getHtml());
-        if (matcher.find()) {
-            return matcher.group(0);
-        }else {
-            throw new Exception("RegexMatcherError: " + pattern);
-        }
-    }
-
-    public Integer length() throws Exception {
-        return getVidInfo().getJSONObject("videoDetails")
-                .getInt("lengthSeconds");
-    }
-
-    public String getThumbnailUrl() throws Exception {
-        JSONArray thumbnails = getVidInfo().getJSONObject("videoDetails")
-                .getJSONObject("thumbnail")
-                .getJSONArray("thumbnails");
-        return thumbnails.getJSONObject(thumbnails.length() - 1).getString("url");
-    }
-
-    public Integer getViews() throws Exception {
-        return Integer.parseInt(getVidInfo().getJSONObject("videoDetails")
-                .getString("viewCount"));
-    }
-
-    public String getAuthor() throws Exception {
-        return getVidInfo().getJSONObject("videoDetails")
-                .getString("author");
-    }
-
-    public ArrayList<Captions> getCaptionTracks() throws Exception {
-        try{
-            JSONArray rawTracks = getVidInfo().getJSONObject("captions")
-                    .getJSONObject("playerCaptionsTracklistRenderer")
-                    .getJSONArray("captionTracks");
-            ArrayList<Captions> captions = new ArrayList<>();
-            for(int i = 0; i < rawTracks.length() - 1; i++){
-                captions.add(new Captions(rawTracks.getJSONObject(i)));
-            }
-            return captions;
-        } catch (JSONException e) {
-            return null;
-        }
-    }
-
-    public CaptionQuery getCaptions() throws Exception {
-        return new CaptionQuery(getCaptionTracks());
-    }
-
-    public JSONArray getKeywords() throws Exception {
-        try {
-            return getVidInfo().getJSONObject("videoDetails")
-                    .getJSONArray("keywords");
-        }catch (JSONException e){
-            return null;
-        }
-    }
-
-    public StreamQuery streams() throws Exception {
-        return new StreamQuery(fmtStreams());
     }
 }

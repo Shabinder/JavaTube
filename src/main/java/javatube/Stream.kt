@@ -1,388 +1,596 @@
-package javatube;
+package javatube
 
-import org.json.JSONObject;
+import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.Arrays
+import java.util.function.Consumer
+import java.util.regex.Matcher
+import java.util.regex.Pattern
 
-import java.io.*;
-import java.net.*;
-import java.util.*;
-import java.util.function.Consumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import static java.lang.Math.min;
+class Stream(stream: JSONObject, val title: String) {
+    val url: String
+    val itag: Int
+    val mimeType: String
+    val codecs: String
+    val type: String
+    val subType: String
+    val videoCodec: String?
+    val audioCodec: String?
+    val bitrate: Int
+    val isOtf: Boolean
+    val fileSize: Long
+    val itagProfile: Map<String, String?>
+    val abr: String?
+    var fps: Int? = null
+    val resolution: String?
 
-public class Stream{
-
-    private final String title;
-    private final String url;
-    private final Integer itag;
-    private final String mimeType;
-    private final String codecs;
-    private final String type;
-    private final String subType;
-    private final String videoCodec;
-    private final String audioCodec;
-    private final Integer bitrate;
-    private final Boolean isOtf;
-    private final long fileSize;
-    private final Map<String, String> itagProfile;
-    private final String abr;
-    private Integer fps = null;
-    private final String resolution;
-
-    public Stream(JSONObject stream, String videoTitle) throws Exception {
-        title = videoTitle;
-        url = stream.getString("url");
-        itag = stream.getInt("itag");
-        mimeType = mimeTypeCodec(stream.getString("mimeType")).group(1);
-        codecs = mimeTypeCodec(stream.getString("mimeType")).group(2);
-        type = Arrays.asList(mimeType.split("/")).get(0);
-        subType = Arrays.asList(mimeType.split("/")).get(1);
-        videoCodec = parseCodecs().get(0);
-        audioCodec = parseCodecs().get(1);
-        bitrate = stream.getInt("bitrate");
-        isOtf = setIsOtf(stream);
-        fileSize = setFileSize(stream.has("contentLength") ? stream.getString("contentLength") : null);
-        itagProfile = getFormatProfile();
-        abr = itagProfile.get("abr");
-        if(stream.has("fps")){
-            fps = stream.getInt("fps");
+    init {
+        url = stream.getString("url")
+        itag = stream.getInt("itag")
+        mimeType = mimeTypeCodec(stream.getString("mimeType")).group(1)
+        codecs = mimeTypeCodec(stream.getString("mimeType")).group(2)
+        type = Arrays.asList(*mimeType.split("/".toRegex()).dropLastWhile { it.isEmpty() }
+            .toTypedArray())[0]
+        subType = Arrays.asList(*mimeType.split("/".toRegex()).dropLastWhile { it.isEmpty() }
+            .toTypedArray())[1]
+        videoCodec = parseCodecs()[0]
+        audioCodec = parseCodecs()[1]
+        bitrate = stream.getInt("bitrate")
+        isOtf = setIsOtf(stream)
+        fileSize =
+            setFileSize(if (stream.has("contentLength")) stream.getString("contentLength") else null)
+        itagProfile = formatProfile
+        abr = itagProfile["abr"]
+        if (stream.has("fps")) {
+            fps = stream.getInt("fps")
         }
-        resolution = itagProfile.get("resolution");
+        resolution = itagProfile["resolution"]
     }
 
-    private long setFileSize(String size) throws IOException {
-        if (Objects.equals(size, null)) {
-            if(!isOtf){
-                URL url = new URL(this.url);
-                HttpURLConnection http = (HttpURLConnection) url.openConnection();
-                http.setRequestMethod("HEAD");
-
-                try {
-                    size = http.getHeaderFields().get("Content-Length").get(0);
-                } catch (NullPointerException e) {
-                    size = "0";
+    @Throws(IOException::class)
+    private fun setFileSize(size: String?): Long {
+        var size = size
+        if (size == null) {
+            if (!isOtf) {
+                val url = URL(url)
+                val http = url.openConnection() as HttpURLConnection
+                http.requestMethod = "HEAD"
+                size = try {
+                    http.headerFields["Content-Length"]!![0]
+                } catch (e: NullPointerException) {
+                    "0"
                 }
-                http.disconnect();
-            }else {
-                size = "0";
+                http.disconnect()
+            } else {
+                size = "0"
             }
-            return Long.parseLong(size);
+            return size!!.toLong()
         }
-        return Long.parseLong(size);
+        return size.toLong()
     }
 
-    private boolean setIsOtf(JSONObject stream){
-        if(stream.has("type")){
-            return Objects.equals(stream.getString("type"), "FORMAT_STREAM_TYPE_OTF");
-        }else{
-            return false;
+    private fun setIsOtf(stream: JSONObject): Boolean {
+        return if (stream.has("type")) {
+            stream.getString("type") == "FORMAT_STREAM_TYPE_OTF"
+        } else {
+            false
         }
     }
 
-    public Boolean isAdaptive(){
-        return (Arrays.asList(codecs.split(",")).size() % 2) == 1;
+    val isAdaptive: Boolean
+        get() = codecs.split(",".toRegex()).dropLastWhile { it.isEmpty() }.size % 2 == 1
+    val isProgressive: Boolean
+        get() = !isAdaptive
+
+    fun includeAudioTrack(): Boolean {
+        return isProgressive || type == "audio"
     }
 
-    public Boolean isProgressive(){
-        return !isAdaptive();
+    fun includeVideoTrack(): Boolean {
+        return isProgressive || type == "video"
     }
 
-    public Boolean includeAudioTrack(){
-        return isProgressive() || Objects.equals(type, "audio");
-    }
-
-    public Boolean includeVideoTrack() { return isProgressive() || Objects.equals(type, "video"); }
-
-    private ArrayList<String> parseCodecs(){
-        ArrayList<String> array = new ArrayList<>();
-        String video = null, audio = null;
-        if(!isAdaptive()){
-            video = Arrays.asList(codecs.split(",")).get(0);
-            audio = Arrays.asList(codecs.split(",")).get(1);
-        }else if(includeVideoTrack()){
-            video = Arrays.asList(codecs.split(",")).get(0);
+    private fun parseCodecs(): List<String?> {
+        val array = mutableListOf<String?>()
+        var video: String? = null
+        var audio: String? = null
+        val split = codecs.split(",".toRegex()).dropLastWhile { it.isEmpty() }
+        if (!isAdaptive) {
+            video = split[0]
+            audio = split[1]
+        } else if (includeVideoTrack()) {
+            video = split[0]
         } else if (includeAudioTrack()) {
-            audio = Arrays.asList(codecs.split(",")).get(0);
+            audio = split[0]
         }
-        array.add(video);
-        array.add(audio);
-
-        return array;
+        array.add(video)
+        array.add(audio)
+        return array
     }
 
-    private Matcher mimeTypeCodec(String mimeTypeCodec) throws Exception {
-        Pattern pattern = Pattern.compile("(\\w+/\\w+);\\scodecs=\"([a-zA-Z-0-9.,\\s]*)\"");
-        Matcher matcher = pattern.matcher(mimeTypeCodec);
-        if (matcher.find()) {
-            return matcher;
-        }else {
-            throw new Exception("RegexMatcherError: " + pattern);
+    @Throws(Exception::class)
+    private fun mimeTypeCodec(mimeTypeCodec: String): Matcher {
+        val pattern = Pattern.compile("(\\w+/\\w+);\\scodecs=\"([a-zA-Z-0-9.,\\s]*)\"")
+        val matcher = pattern.matcher(mimeTypeCodec)
+        return if (matcher.find()) {
+            matcher
+        } else {
+            throw Exception("RegexMatcherError: $pattern")
         }
     }
 
-    private String safeFileName(String s){
-        return s.replaceAll("[\"'#$%*,.:;<>?\\\\^|~/]", " ");
+    private fun safeFileName(s: String): String {
+        return s.replace("[\"'#$%*,.:;<>?\\\\^|~/]".toRegex(), " ")
     }
 
-    public static void onProgress(long value){
-        System.out.println(value + "%");
+    @Throws(Exception::class)
+    fun download(path: String) {
+        startDownload(path, title) { value: Long -> onProgress(value) }
     }
-    public void download(String path) throws Exception {
-        startDownload(path, title, Stream::onProgress);
+
+    @Throws(Exception::class)
+    fun download(path: String, progress: Consumer<Long>) {
+        startDownload(path, title, progress)
     }
-    public void download(String path, Consumer<Long> progress) throws Exception {
-        startDownload(path, title, progress);
+
+    @Throws(Exception::class)
+    fun download(path: String, fileName: String) {
+        startDownload(path, fileName) { value: Long -> onProgress(value) }
     }
-    public void download(String path, String fileName) throws Exception {
-        startDownload(path, fileName, Stream::onProgress);
+
+    @Throws(Exception::class)
+    fun download(path: String, fileName: String, progress: Consumer<Long>) {
+        startDownload(path, fileName, progress)
     }
-    public void download(String path, String fileName, Consumer<Long> progress) throws Exception {
-        startDownload(path, fileName, progress);
-    }
-    private void startDownload(String path, String fileName, Consumer<Long> progress) throws Exception {
-        if(!isOtf){
-            String savePath = path + safeFileName(fileName) + "." + subType;
-            int startSize = 0;
-            int stopPos;
-            int defaultRange = 1048576;
-            File f = new File(savePath);
-            if(f.exists()){
-                if(!f.delete()){
-                    throw new IOException("Failed to delete existing output file: " + f.getName());
+
+    @Throws(Exception::class)
+    private fun startDownload(path: String, fileName: String, progress: Consumer<Long>) {
+        if (!isOtf) {
+            val savePath = path + safeFileName(fileName) + "." + subType
+            var startSize = 0
+            var stopPos: Int
+            val defaultRange = 1048576
+            val f = File(savePath)
+            if (f.exists()) {
+                if (!f.delete()) {
+                    throw IOException("Failed to delete existing output file: " + f.name)
                 }
+                do {
+                    stopPos = Math.min((startSize + defaultRange).toLong(), fileSize).toInt()
+                    if (stopPos >= fileSize) {
+                        stopPos = fileSize.toInt()
+                    }
+                    val chunk = "$url&range=$startSize-$stopPos"
+                    InnerTube.get(
+                        chunk,
+                        savePath,
+                        Integer.toString(startSize),
+                        Integer.toString(stopPos)
+                    )
+                    progress.accept(stopPos * 100L / fileSize)
+                    startSize = if (startSize < defaultRange) {
+                        stopPos
+                    } else {
+                        stopPos + 1
+                    }
+                } while (stopPos.toLong() != fileSize)
+            } else {
+                downloadOtf(path, fileName, progress)
             }
-            do {
-                stopPos = (int) min(startSize + defaultRange, fileSize);
-                if (stopPos >= fileSize) {
-                    stopPos = (int) fileSize;
-                }
-                String chunk = url + "&range=" + startSize + "-" + stopPos;
-                InnerTube.get(chunk, savePath, Integer.toString(startSize), Integer.toString(stopPos));
-                progress.accept((stopPos * 100L) / (fileSize));
-                if(startSize < defaultRange){
-                    startSize = stopPos;
-                }else{
-                    startSize = stopPos + 1;
-                }
-            } while (stopPos != fileSize);
-        }else {
-            downloadOtf(path, fileName, progress);
         }
     }
 
-    private void downloadOtf(String path, String fileName, Consumer<Long> progress) throws Exception {
-        int countChunk = 0;
-        byte[] chunkReceived;
-        int lastChunk = 0;
-        String savePath = path + safeFileName(fileName) + "." + subType;
-
-        File outputFile = new File(savePath);
-        if(outputFile.exists()){
-            if(!outputFile.delete()){
-                throw new IOException("Failed to delete existing output file: " + outputFile.getName());
+    @Throws(Exception::class)
+    private fun downloadOtf(path: String, fileName: String, progress: Consumer<Long>) {
+        var countChunk = 0
+        var chunkReceived: ByteArray?
+        var lastChunk = 0
+        val savePath = path + safeFileName(fileName) + "." + subType
+        val outputFile = File(savePath)
+        if (outputFile.exists()) {
+            if (!outputFile.delete()) {
+                throw IOException("Failed to delete existing output file: " + outputFile.name)
             }
         }
         do {
-            String chunk = url + "&sq=" + countChunk;
-
-            chunkReceived = InnerTube.postChunk(chunk).toByteArray();
-
-            if(countChunk == 0){
-                Pattern pattern = Pattern.compile("Segment-Count: (\\d*)");
-                Matcher matcher = pattern.matcher(new String(chunkReceived));
-                if (matcher.find()){
-                    lastChunk = Integer.parseInt(matcher.group(1));
-                }else{
-                    throw new Exception("RegexMatcherError: " + pattern);
+            val chunk = "$url&sq=$countChunk"
+            chunkReceived = InnerTube.postChunk(chunk).toByteArray()
+            if (countChunk == 0) {
+                val pattern = Pattern.compile("Segment-Count: (\\d*)")
+                val matcher = pattern.matcher(String(chunkReceived))
+                lastChunk = if (matcher.find()) {
+                    matcher.group(1).toInt()
+                } else {
+                    throw Exception("RegexMatcherError: $pattern")
                 }
+                progress.accept(countChunk * 100L / lastChunk)
+                countChunk = countChunk + 1
+                FileOutputStream(savePath, true).use { fos -> fos.write(chunkReceived) }
             }
-            progress.accept((countChunk * 100L) / (lastChunk));
-            countChunk = countChunk + 1;
-            try (FileOutputStream fos = new FileOutputStream(savePath, true)) {
-                fos.write(chunkReceived);
-            }
-        }while (countChunk <= lastChunk);
+        } while (countChunk <= lastChunk)
     }
 
-    private Map<String, String> getFormatProfile(){
-        Map<Integer, ArrayList<String>> itags = new HashMap<>();
+    private val formatProfile: Map<String, String?>
+        get() {
+            val itags: MutableMap<Int, List<String>> = mutableMapOf()
 
-        // progressive video
-        itags.put(5, new ArrayList<>(){{add("240p");add("64kbps");}});
-        itags.put(6, new ArrayList<>(){{add("270p");add("64kbps");}});
-        itags.put(13, new ArrayList<>(){{add("144p");add(null);}});
-        itags.put(17, new ArrayList<>(){{add("144p");add("24kbps");}});
-        itags.put(18, new ArrayList<>(){{add("360p");add("96kbps");}});
-        itags.put(22, new ArrayList<>(){{add("720p");add("192kbps");}});
-        itags.put(34, new ArrayList<>(){{add("360p");add("128kbps");}});
-        itags.put(35, new ArrayList<>(){{add("480p");add("128kbps");}});
-        itags.put(36, new ArrayList<>(){{add("240p");add(null);}});
-        itags.put(37, new ArrayList<>(){{add("1080p");add("192kbps");}});
-        itags.put(38, new ArrayList<>(){{add("3072p");add("192kbps");}});
-        itags.put(43, new ArrayList<>(){{add("360p");add("128kbps");}});
-        itags.put(44, new ArrayList<>(){{add("480p");add("128kbps");}});
-        itags.put(45, new ArrayList<>(){{add("720p");add("192kbps");}});
-        itags.put(46, new ArrayList<>(){{add("1080p");add("192kbps");}});
-        itags.put(59, new ArrayList<>(){{add("480p");add("128kbps");}});
-        itags.put(78, new ArrayList<>(){{add("480p");add("128kbps");}});
-        itags.put(82, new ArrayList<>(){{add("360p");add("128kbps");}});
-        itags.put(83, new ArrayList<>(){{add("480p");add("128kbps");}});
-        itags.put(84, new ArrayList<>(){{add("720p");add("192kbps");}});
-        itags.put(85, new ArrayList<>(){{add("1080p");add("192kbps");}});
-        itags.put(91, new ArrayList<>(){{add("144p");add("48kbps");}});
-        itags.put(92, new ArrayList<>(){{add("240p");add("48kbps");}});
-        itags.put(93, new ArrayList<>(){{add("360p");add("128kbps");}});
-        itags.put(94, new ArrayList<>(){{add("480p");add("128kbps");}});
-        itags.put(95, new ArrayList<>(){{add("720p");add("256kbps");}});
-        itags.put(96, new ArrayList<>(){{add("1080p");add("256kbps");}});
-        itags.put(100, new ArrayList<>(){{add("360p");add("128kbps");}});
-        itags.put(101, new ArrayList<>(){{add("480p");add("192kbps");}});
-        itags.put(102, new ArrayList<>(){{add("720p");add("192kbps");}});
-        itags.put(132, new ArrayList<>(){{add("240p");add("48kbps");}});
-        itags.put(151, new ArrayList<>(){{add("720p");add("24kbps");}});
-        itags.put(300, new ArrayList<>(){{add("720p");add("128kbps");}});
-        itags.put(301, new ArrayList<>(){{add("1080p");add("128kbps");}});
+            // progressive video
+            itags[5] = mutableListOf<String>().apply {
+                add("240p")
+                add("64kbps")
+            }
+            itags[6] = mutableListOf<String>().apply {
+                add("270p")
+                add("64kbps")
+            }
 
-        // dash video
-        itags.put(133, new ArrayList<>(){{add("240p");add(null);}}); // MP4
-        itags.put(134, new ArrayList<>(){{add("360p");add(null);}}); // MP4
-        itags.put(135, new ArrayList<>(){{add("480p");add(null);}}); // MP4
-        itags.put(136, new ArrayList<>(){{add("720p");add(null);}}); // MP4
-        itags.put(137, new ArrayList<>(){{add("1080p");add(null);}}); // MP4
-        itags.put(138, new ArrayList<>(){{add("2160p");add(null);}}); // MP4
-        itags.put(160, new ArrayList<>(){{add("144p");add(null);}}); // WEBM
-        itags.put(167, new ArrayList<>(){{add("360p");add(null);}}); // WEBM
-        itags.put(168, new ArrayList<>(){{add("480p");add(null);}}); // WEBM
-        itags.put(169, new ArrayList<>(){{add("720p");add(null);}}); // WEBM
-        itags.put(170, new ArrayList<>(){{add("1080p");add(null);}}); // WEBM
-        itags.put(212, new ArrayList<>(){{add("480p");add(null);}}); // MP4
-        itags.put(218, new ArrayList<>(){{add("480p");add(null);}}); // WEBM
-        itags.put(219, new ArrayList<>(){{add("480p");add(null);}}); // WEBM
-        itags.put(242, new ArrayList<>(){{add("240p");add(null);}}); // WEBM
-        itags.put(243, new ArrayList<>(){{add("360p");add(null);}}); // WEBM
-        itags.put(244, new ArrayList<>(){{add("480p");add(null);}}); // WEBM
-        itags.put(245, new ArrayList<>(){{add("480p");add(null);}}); // WEBM
-        itags.put(246, new ArrayList<>(){{add("480p");add(null);}}); // WEBM
-        itags.put(247, new ArrayList<>(){{add("720p");add(null);}}); // WEBM
-        itags.put(248, new ArrayList<>(){{add("1080p");add(null);}}); // WEBM
-        itags.put(264, new ArrayList<>(){{add("1440p");add(null);}}); // MP4
-        itags.put(266, new ArrayList<>(){{add("2160p");add(null);}}); // MP4
-        itags.put(271, new ArrayList<>(){{add("1440p");add(null);}}); // WEBM
-        itags.put(272, new ArrayList<>(){{add("4320p");add(null);}}); // WEBM
-        itags.put(278, new ArrayList<>(){{add("144p");add(null);}}); // WEBM
-        itags.put(298, new ArrayList<>(){{add("720p");add(null);}}); // MP4
-        itags.put(299, new ArrayList<>(){{add("1080p");add(null);}}); // MP4
-        itags.put(302, new ArrayList<>(){{add("720p");add(null);}});  // WEBM
-        itags.put(303, new ArrayList<>(){{add("1080p");add(null);}}); // WEBM
-        itags.put(308, new ArrayList<>(){{add("1440p");add(null);}}); // WEBM
-        itags.put(313, new ArrayList<>(){{add("2160p");add(null);}}); // WEBM
-        itags.put(315, new ArrayList<>(){{add("2160p");add(null);}}); // WEBM
-        itags.put(330, new ArrayList<>(){{add("144p");add(null);}}); // WEBM
-        itags.put(331, new ArrayList<>(){{add("240p");add(null);}}); // WEBM
-        itags.put(332, new ArrayList<>(){{add("360p");add(null);}}); // WEBM
-        itags.put(333, new ArrayList<>(){{add("480p");add(null);}}); // WEBM
-        itags.put(334, new ArrayList<>(){{add("720p");add(null);}}); // WEBM
-        itags.put(335, new ArrayList<>(){{add("1080p");add(null);}}); // WEBM
-        itags.put(336, new ArrayList<>(){{add("1440p");add(null);}}); // WEBM
-        itags.put(337, new ArrayList<>(){{add("2160p");add(null);}}); // WEBM
-        itags.put(394, new ArrayList<>(){{add("144p");add(null);}});  // MP4
-        itags.put(395, new ArrayList<>(){{add("240p");add(null);}}); // MP4
-        itags.put(396, new ArrayList<>(){{add("360p");add(null);}}); // MP4
-        itags.put(397, new ArrayList<>(){{add("480p");add(null);}}); // MP4
-        itags.put(398, new ArrayList<>(){{add("720p");add(null);}}); // MP4
-        itags.put(399, new ArrayList<>(){{add("1080p");add(null);}}); // MP4
-        itags.put(400, new ArrayList<>(){{add("1440p");add(null);}}); // MP4
-        itags.put(401, new ArrayList<>(){{add("2160p");add(null);}}); // MP4
-        itags.put(402, new ArrayList<>(){{add("4320p");add(null);}}); // MP4
-        itags.put(571, new ArrayList<>(){{add("4320p");add(null);}}); // MP4
-        itags.put(694, new ArrayList<>(){{add("144p");add(null);}}); // MP4
-        itags.put(695, new ArrayList<>(){{add("240p");add(null);}}); // MP4
-        itags.put(696, new ArrayList<>(){{add("360p");add(null);}}); // MP4
-        itags.put(697, new ArrayList<>(){{add("480p");add(null);}}); // MP4
-        itags.put(698, new ArrayList<>(){{add("720p");add(null);}}); // MP4
-        itags.put(699, new ArrayList<>(){{add("1080p");add(null);}}); // MP4
-        itags.put(700, new ArrayList<>(){{add("1440p");add(null);}}); // MP4
-        itags.put(701, new ArrayList<>(){{add("2160p");add(null);}}); // MP4
-        itags.put(702, new ArrayList<>(){{add("4320p");add(null);}}); // MP4
+            itags[13] = mutableListOf<String>().apply {
+                add("144p")
+            }
+            itags[17] = mutableListOf<String>().apply {
+                add("144p")
+                add("24kbps")
+            }
+            itags[18] = mutableListOf<String>().apply {
+                add("360p")
+                add("96kbps")
+            }
+            itags[22] = mutableListOf<String>().apply {
+                add("720p")
+                add("192kbps")
+            }
+            itags[34] = mutableListOf<String>().apply {
+                add("360p")
+                add("128kbps")
+            }
+            itags[35] = mutableListOf<String>().apply {
+                add("480p")
+                add("128kbps")
+            }
+            itags[36] = mutableListOf<String>().apply {
+                add("240p")
+            }
+            itags[37] = mutableListOf<String>().apply {
+                add("1080p")
+                add("192kbps")
+            }
+            itags[38] = mutableListOf<String>().apply {
+                add("3072p")
+                add("192kbps")
+            }
+            itags[43] = mutableListOf<String>().apply {
+                add("360p")
+                add("128kbps")
+            }
+            itags[44] = mutableListOf<String>().apply {
+                add("480p")
+                add("128kbps")
+            }
+            itags[45] = mutableListOf<String>().apply {
+                add("720p")
+                add("192kbps")
+            }
+            itags[46] = mutableListOf<String>().apply {
+                add("1080p")
+                add("192kbps")
+            }
+            itags[59] = mutableListOf<String>().apply {
+                add("480p")
+                add("128kbps")
+            }
+            itags[78] = mutableListOf<String>().apply {
+                add("480p")
+                add("128kbps")
+            }
+            itags[82] = mutableListOf<String>().apply {
+                add("360p")
+                add("128kbps")
+            }
+            itags[83] = mutableListOf<String>().apply {
+                add("480p")
+                add("128kbps")
+            }
+            itags[84] = mutableListOf<String>().apply {
+                add("720p")
+                add("192kbps")
+            }
+            itags[85] = mutableListOf<String>().apply {
+                add("1080p")
+                add("192kbps")
+            }
+            itags[91] = mutableListOf<String>().apply {
+                add("144p")
+                add("48kbps")
+            }
+            itags[92] = mutableListOf<String>().apply {
+                add("240p")
+                add("48kbps")
+            }
+            itags[93] = mutableListOf<String>().apply {
+                add("360p")
+                add("128kbps")
+            }
+            itags[94] = mutableListOf<String>().apply {
+                add("480p")
+                add("128kbps")
+            }
+            itags[95] = mutableListOf<String>().apply {
+                add("720p")
+                add("256kbps")
+            }
+            itags[96] = mutableListOf<String>().apply {
+                add("1080p")
+                add("256kbps")
+            }
+            itags[100] = mutableListOf<String>().apply {
+                add("360p")
+                add("128kbps")
+            }
+            itags[101] = mutableListOf<String>().apply {
+                add("480p")
+                add("192kbps")
+            }
+            itags[102] = mutableListOf<String>().apply {
+                add("720p")
+                add("192kbps")
+            }
+            itags[132] = mutableListOf<String>().apply {
+                add("240p")
+                add("48kbps")
+            }
+            itags[151] = mutableListOf<String>().apply {
+                add("720p")
+                add("24kbps")
+            }
+            itags[300] = mutableListOf<String>().apply {
+                add("720p")
+                add("128kbps")
+            }
+            itags[301] = mutableListOf<String>().apply {
+                add("1080p")
+                add("128kbps")
+            }
 
-        // dash audio
-        itags.put(139, new ArrayList<>(){{add(null);add("48kbps");}}); // MP4
-        itags.put(140, new ArrayList<>(){{add(null);add("128kbps");}}); // MP4
-        itags.put(141, new ArrayList<>(){{add(null);add("256kbps");}}); // MP4
-        itags.put(171, new ArrayList<>(){{add(null);add("128kbps");}}); // WEBM
-        itags.put(172, new ArrayList<>(){{add(null);add("256kbps");}}); // WEBM
-        itags.put(249, new ArrayList<>(){{add(null);add("50kbps");}}); // WEBM
-        itags.put(250, new ArrayList<>(){{add(null);add("70kbps");}}); // WEBM
-        itags.put(251, new ArrayList<>(){{add(null);add("160kbps");}}); // WEBM
-        itags.put(256, new ArrayList<>(){{add(null);add("192kbps");}}); // MP4
-        itags.put(258, new ArrayList<>(){{add(null);add("384kbps");}}); // MP4
-        itags.put(325, new ArrayList<>(){{add(null);add(null);}}); // MP4
-        itags.put(328, new ArrayList<>(){{add(null);add(null);}}); // MP4
+            // dash video
+            itags[133] = mutableListOf<String>().apply {
+                add("240p")
+            } // MP4
+            itags[134] = mutableListOf<String>().apply {
+                add("360p")
+            } // MP4
+            itags[135] = mutableListOf<String>().apply {
+                add("480p")
+            } // MP4
+            itags[136] = mutableListOf<String>().apply {
+                add("720p")
+            } // MP4
+            itags[137] = mutableListOf<String>().apply {
+                add("1080p")
+            } // MP4
+            itags[138] = mutableListOf<String>().apply {
+                add("2160p")
+            } // MP4
+            itags[160] = mutableListOf<String>().apply {
+                add("144p")
+            } // WEBM
+            itags[167] = mutableListOf<String>().apply {
+                add("360p")
+            } // WEBM
+            itags[168] = mutableListOf<String>().apply {
+                add("480p")
+            } // WEBM
+            itags[169] = mutableListOf<String>().apply {
+                add("720p")
+            } // WEBM
+            itags[170] = mutableListOf<String>().apply {
+                add("1080p")
+            } // WEBM
+            itags[212] = mutableListOf<String>().apply {
+                add("480p")
+            } // MP4
+            itags[218] = mutableListOf<String>().apply {
+                add("480p")
+            } // WEBM
+            itags[219] = mutableListOf<String>().apply {
+                add("480p")
+            } // WEBM
+            itags[242] = mutableListOf<String>().apply {
+                add("240p")
+            } // WEBM
+            itags[243] = mutableListOf<String>().apply {
+                add("360p")
+            } // WEBM
+            itags[244] = mutableListOf<String>().apply {
+                add("480p")
+            } // WEBM
+            itags[245] = mutableListOf<String>().apply {
+                add("480p")
+            } // WEBM
+            itags[246] = mutableListOf<String>().apply {
+                add("480p")
+            } // WEBM
+            itags[247] = mutableListOf<String>().apply {
+                add("720p")
+            } // WEBM
+            itags[248] = mutableListOf<String>().apply {
+                add("1080p")
+            } // WEBM
+            itags[264] = mutableListOf<String>().apply {
+                add("1440p")
+            } // MP4
+            itags[266] = mutableListOf<String>().apply {
+                add("2160p")
+            } // MP4
+            itags[271] = mutableListOf<String>().apply {
+                add("1440p")
+            } // WEBM
+            itags[272] = mutableListOf<String>().apply {
+                add("4320p")
+            } // WEBM
+            itags[278] = mutableListOf<String>().apply {
+                add("144p")
+            } // WEBM
+            itags[298] = mutableListOf<String>().apply {
+                add("720p")
+            } // MP4
+            itags[299] = mutableListOf<String>().apply {
+                add("1080p")
+            } // MP4
+            itags[302] = mutableListOf<String>().apply {
+                add("720p")
+            } // WEBM
+            itags[303] = mutableListOf<String>().apply {
+                add("1080p")
+            } // WEBM
+            itags[308] = mutableListOf<String>().apply {
+                add("1440p")
+            } // WEBM
+            itags[313] = mutableListOf<String>().apply {
+                add("2160p")
+            } // WEBM
+            itags[315] = mutableListOf<String>().apply {
+                add("2160p")
+            } // WEBM
+            itags[330] = mutableListOf<String>().apply {
+                add("144p")
+            } // WEBM
+            itags[331] = mutableListOf<String>().apply {
+                add("240p")
+            } // WEBM
+            itags[332] = mutableListOf<String>().apply {
+                add("360p")
+            } // WEBM
+            itags[333] = mutableListOf<String>().apply {
+                add("480p")
+            } // WEBM
+            itags[334] = mutableListOf<String>().apply {
+                add("720p")
+            } // WEBM
+            itags[335] = mutableListOf<String>().apply {
+                add("1080p")
+            } // WEBM
+            itags[336] = mutableListOf<String>().apply {
+                add("1440p")
+            } // WEBM
+            itags[337] = mutableListOf<String>().apply {
+                add("2160p")
+            } // WEBM
+            itags[394] = mutableListOf<String>().apply {
+                add("144p")
+            } // MP4
+            itags[395] = mutableListOf<String>().apply {
+                add("240p")
+            } // MP4
+            itags[396] = mutableListOf<String>().apply {
+                add("360p")
+            } // MP4
+            itags[397] = mutableListOf<String>().apply {
+                add("480p")
+            } // MP4
+            itags[398] = mutableListOf<String>().apply {
+                add("720p")
+            } // MP4
+            itags[399] = mutableListOf<String>().apply {
+                add("1080p")
+            } // MP4
+            itags[400] = mutableListOf<String>().apply {
+                add("1440p")
+            } // MP4
+            itags[401] = mutableListOf<String>().apply {
+                add("2160p")
+            } // MP4
+            itags[402] = mutableListOf<String>().apply {
+                add("4320p")
+            } // MP4
+            itags[571] = mutableListOf<String>().apply {
+                add("4320p")
+            } // MP4
+            itags[694] = mutableListOf<String>().apply {
+                add("144p")
+            } // MP4
+            itags[695] = mutableListOf<String>().apply {
+                add("240p")
+            } // MP4
+            itags[696] = mutableListOf<String>().apply {
+                add("360p")
+            } // MP4
+            itags[697] = mutableListOf<String>().apply {
+                add("480p")
+            } // MP4
+            itags[698] = mutableListOf<String>().apply {
+                add("720p")
+            } // MP4
+            itags[699] = mutableListOf<String>().apply {
+                add("1080p")
+            } // MP4
+            itags[700] = mutableListOf<String>().apply {
+                add("1440p")
+            } // MP4
+            itags[701] = mutableListOf<String>().apply {
+                add("2160p")
+            } // MP4
+            itags[702] = mutableListOf<String>().apply {
+                add("4320p")
+            } // MP4
 
-
-        String res, bitrate;
-        if(itags.containsKey(itag)){
-            res = itags.get(itag).get(0);
-            bitrate = itags.get(itag).get(1);
-        }else{
-            res = null;
-            bitrate = null;
+            // dash audio
+            itags[139] = mutableListOf<String>().apply {
+                add("48kbps")
+            } // MP4
+            itags[140] = mutableListOf<String>().apply {
+                add("128kbps")
+            } // MP4
+            itags[141] = mutableListOf<String>().apply {
+                add("256kbps")
+            } // MP4
+            itags[171] = mutableListOf<String>().apply {
+                add("128kbps")
+            } // WEBM
+            itags[172] = mutableListOf<String>().apply {
+                add("256kbps")
+            } // WEBM
+            itags[249] = mutableListOf<String>().apply {
+                add("50kbps")
+            } // WEBM
+            itags[250] = mutableListOf<String>().apply {
+                add("70kbps")
+            } // WEBM
+            itags[251] = mutableListOf<String>().apply {
+                add("160kbps")
+            } // WEBM
+            itags[256] = mutableListOf<String>().apply {
+                add("192kbps")
+            } // MP4
+            itags[258] = mutableListOf<String>().apply {
+                add("384kbps")
+            } // MP4
+            itags[325] = mutableListOf<String>().apply {
+            } // MP4
+            itags[328] = mutableListOf<String>().apply {
+            } // MP4
+            val res: String?
+            val bitrate: String?
+            if (itags.containsKey(itag)) {
+                res = itags[itag]?.getOrNull(0)
+                bitrate = itags[itag]?.getOrNull(1)
+            } else {
+                res = null
+                bitrate = null
+            }
+            val returnItags: MutableMap<String, String?> = HashMap()
+            returnItags["resolution"] = res
+            returnItags["abr"] = bitrate
+            return returnItags
         }
 
-        Map<String, String> returnItags = new HashMap<>();
 
-        returnItags.put("resolution", res);
-        returnItags.put("abr", bitrate);
-
-        return returnItags;
+    companion object {
+        fun onProgress(value: Long) {
+            println("$value%")
+        }
     }
-    public String getTitle(){
-        return title;
-    }
-    public String getUrl(){
-        return url;
-    }
-    public Integer getItag(){
-        return itag;
-    }
-    public String getMimeType(){
-        return mimeType;
-    }
-    public String getCodecs(){
-        return codecs;
-    }
-    public String getType(){
-        return type;
-    }
-    public String getSubType(){
-        return subType;
-    }
-    public String getVideoCodec(){
-        return videoCodec;
-    }
-    public String getAudioCodec(){
-        return audioCodec;
-    }
-    public Integer getBitrate(){
-        return bitrate;
-    }
-    public Boolean getIsOtf(){
-        return isOtf;
-    }
-    public long getFileSize(){
-        return fileSize;
-    }
-    public Map<String, String> getItagProfile(){
-        return itagProfile;
-    }
-    public String getAbr(){
-        return abr;
-    }
-    public Integer getFps(){
-        return fps;
-    }
-    public String getResolution(){
-        return resolution;
-    }
-
 }

@@ -1,88 +1,98 @@
-package javatube;
+package javatube
 
-import javax.net.ssl.HttpsURLConnection;
-import java.io.*;
-import java.net.URL;
-import java.net.URLConnection;
-import java.nio.channels.Channels;
-import java.nio.channels.ReadableByteChannel;
+import java.io.BufferedInputStream
+import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.InputStream
+import java.io.InputStreamReader
+import java.net.URL
+import java.nio.channels.Channels
+import javax.net.ssl.HttpsURLConnection
 
-class InnerTube{
-    public static String post(String param, String data) throws IOException {
-        StringBuilder output = new StringBuilder();
-        URL url = new URL(param);
-
-        URLConnection conn = url.openConnection();
-        conn.setDoOutput(true);
-        conn.setRequestProperty("Content-Type", "application/json");
-        conn.setRequestProperty("Content-Length", Integer.toString(data.length()));
-
-        try (DataOutputStream dos = new DataOutputStream(conn.getOutputStream())) {
-            dos.writeBytes(data);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+internal object InnerTube {
+    @Throws(IOException::class)
+    fun post(param: String?, data: String): String {
+        val output = StringBuilder()
+        val url = URL(param)
+        val conn = url.openConnection()
+        conn.doOutput = true
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Content-Length", Integer.toString(data.length))
+        try {
+            DataOutputStream(conn.getOutputStream()).use { dos -> dos.writeBytes(data) }
+        } catch (e: IOException) {
+            throw RuntimeException(e)
         }
-        try (BufferedReader bf = new BufferedReader(new InputStreamReader(
-                conn.getInputStream())))
-        {
-            boolean keepGoing = true;
-            while (keepGoing) {
-                String currentLine = bf.readLine();
-                if (currentLine == null) {
-                    keepGoing = false;
-                } else {
-                    output.append(currentLine);
+        try {
+            BufferedReader(
+                InputStreamReader(
+                    conn.getInputStream()
+                )
+            ).use { bf ->
+                var keepGoing = true
+                while (keepGoing) {
+                    val currentLine = bf.readLine()
+                    if (currentLine == null) {
+                        keepGoing = false
+                    } else {
+                        output.append(currentLine)
+                    }
                 }
             }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        } catch (e: IOException) {
+            throw RuntimeException(e)
         }
-        return output.toString();
+        return output.toString()
     }
 
-    public static void get(String videoUrl, String outputFileName, String start, String end) throws IOException {
-
-        URL url = new URL(videoUrl);
-        URLConnection com = url.openConnection();
-        com.setRequestProperty("Method", "GET");
-        try(
-                ReadableByteChannel rbc = Channels.newChannel(com.getInputStream());
-                FileOutputStream fos = new FileOutputStream(outputFileName, true)) {
-            fos.getChannel().transferFrom(rbc, Integer.parseInt(start), Integer.parseInt(end));
+    @Throws(IOException::class)
+    operator fun get(videoUrl: String?, outputFileName: String?, start: String, end: String) {
+        val url = URL(videoUrl)
+        val com = url.openConnection()
+        com.setRequestProperty("Method", "GET")
+        Channels.newChannel(com.getInputStream()).use { rbc ->
+            FileOutputStream(outputFileName, true).use { fos ->
+                fos.channel.transferFrom(
+                    rbc, start.toInt()
+                        .toLong(), end.toInt().toLong()
+                )
+            }
         }
     }
 
-    public static String downloadWebPage(String webpage) throws IOException {
-        URL url = new URL(webpage);
-        HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
-        con.setRequestProperty ( "accept-language", "en-US,en" );
-        con.setRequestProperty ( "User-Agent", "Mozilla/5.0" );
-        InputStream ins = con.getInputStream();
-        InputStreamReader isr = new InputStreamReader(ins);
-        BufferedReader in = new BufferedReader(isr);
-        String inputLine;
-        StringBuilder html = new StringBuilder();
-
-        while ((inputLine = in.readLine()) != null) {
-            html.append(inputLine);
+    @Throws(IOException::class)
+    fun downloadWebPage(webpage: String?): String {
+        val url = URL(webpage)
+        val con = url.openConnection() as HttpsURLConnection
+        con.setRequestProperty("accept-language", "en-US,en")
+        con.setRequestProperty("User-Agent", "Mozilla/5.0")
+        val ins = con.inputStream
+        val isr = InputStreamReader(ins)
+        val `in` = BufferedReader(isr)
+        var inputLine: String?
+        val html = StringBuilder()
+        while (`in`.readLine().also { inputLine = it } != null) {
+            html.append(inputLine)
         }
-        in.close();
-        return html.toString();
+        `in`.close()
+        return html.toString()
     }
 
-    public static ByteArrayOutputStream postChunk(String chunk) throws IOException {
-        URL url = new URL(chunk);
-        InputStream in = new BufferedInputStream(url.openStream());
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buf = new byte[1024];
-        int n;
-        while (-1!=(n=in.read(buf))) {
-            out.write(buf, 0, n);
+    @Throws(IOException::class)
+    fun postChunk(chunk: String?): ByteArrayOutputStream {
+        val url = URL(chunk)
+        val `in`: InputStream = BufferedInputStream(url.openStream())
+        val out = ByteArrayOutputStream()
+        val buf = ByteArray(1024)
+        var n: Int
+        while (-1 != `in`.read(buf).also { n = it }) {
+            out.write(buf, 0, n)
         }
-        out.close();
-        in.close();
-
-        return out;
+        out.close()
+        `in`.close()
+        return out
     }
-
 }
